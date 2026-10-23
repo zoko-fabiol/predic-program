@@ -13,12 +13,32 @@ h1{font-size:20px;margin:0}h3{margin:0 0 10px;font-size:16px}
 nav{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
 button,select,input{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;max-width:100%}
 button{cursor:pointer}button.on,button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+button.danger{background:#c62828;color:#fff;border-color:#c62828}
+button.sec{background:transparent;border:1px solid var(--bd);color:var(--fg)}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
 .lab{display:block;color:var(--mut);font-size:13px;margin:10px 0 4px}
 .mut{color:var(--mut);font-size:13px}
 ul{list-style:none;margin:0;padding:0}li{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--bd)}
 .x{padding:0 8px;border:0;background:none;color:var(--mut)}
+.drop-zone{border:2px dashed var(--bd);border-radius:12px;padding:24px;text-align:center;cursor:pointer;background:var(--bg);transition:border-color .2s,background .2s}
+.drop-zone:hover,.drop-zone.active{border-color:var(--ac);background:rgba(47,93,138,0.08)}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0}
+.stat-card{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px;text-align:center}
+.stat-card .val{font-size:18px;font-weight:700;color:var(--ac);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stat-card .lbl{font-size:11.5px;color:var(--mut)}
+.alert{padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+.alert-ok{background:#e8f5e9;color:#1b5e20;border:1px solid #c8e6c9}
+.alert-err{background:#ffebee;color:#b71c1c;border:1px solid #ffcdd2}
+.alert-warn{background:#fff8e1;color:#f57f17;border:1px solid #ffe082}
+@media (prefers-color-scheme:dark){
+ :root:not([data-theme="light"]) .alert-ok{background:#1b3820;color:#a5d6a7;border-color:#2e5934}
+ :root:not([data-theme="light"]) .alert-err{background:#3b1c1c;color:#ef9a9a;border-color:#5c2828}
+ :root:not([data-theme="light"]) .alert-warn{background:#38321a;color:#ffe082;border-color:#594d25}
+}
+:root[data-theme="dark"] .alert-ok{background:#1b3820;color:#a5d6a7;border-color:#2e5934}
+:root[data-theme="dark"] .alert-err{background:#3b1c1c;color:#ef9a9a;border-color:#5c2828}
+:root[data-theme="dark"] .alert-warn{background:#38321a;color:#ffe082;border-color:#594d25}
 .wk{overflow-x:auto;margin-bottom:12px}
 .ed{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
 .ed>div{border:1px solid var(--bd);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px}
@@ -224,6 +244,386 @@ function Prog({cfg,L}){
   );
 }
 
+function BackupView({cfg,reload,onSuccess}){
+  const [stats,setStats]=useState({lieux:0,presidents:0,matieres:0,progs:0,moisList:[]});
+  const [fileData,setFileData]=useState(null);
+  const [fileName,setFileName]=useState('');
+  const [msg,setMsg]=useState(null);
+  const [snapshots,setSnapshots]=useState([]);
+  const [snapLabel,setSnapLabel]=useState('');
+  const [dragActive,setDragActive]=useState(false);
+
+  const refreshStats=useCallback(async()=>{
+    try{
+      const [nl,np,nm,allProgs]=await Promise.all([
+        db.lieux.count(),
+        db.presidents.count(),
+        db.matieres.count(),
+        db.progs.toArray()
+      ]);
+      setStats({
+        lieux:nl,
+        presidents:np,
+        matieres:nm,
+        progs:allProgs.length,
+        moisList:allProgs.map(p=>p.mois).sort()
+      });
+    }catch(e){console.error(e)}
+    try{
+      const raw=localStorage.getItem('predic_snapshots');
+      setSnapshots(raw?JSON.parse(raw):[]);
+    }catch(e){console.error(e)}
+  },[]);
+
+  useEffect(()=>{refreshStats()},[refreshStats]);
+
+  const showMsg=(text,type='ok')=>{
+    setMsg({text,type});
+    setTimeout(()=>setMsg(null),7000);
+  };
+
+  const handleExport=async()=>{
+    try{
+      const [c,lieux,presidents,matieres,progs]=await Promise.all([
+        db.kv.get('cfg'),
+        db.lieux.toArray(),
+        db.presidents.toArray(),
+        db.matieres.toArray(),
+        db.progs.toArray()
+      ]);
+      const data={
+        app:'programme_predication',
+        version:1,
+        exportedAt:new Date().toISOString(),
+        cfg:c?c.v:null,
+        lieux,
+        presidents,
+        matieres,
+        progs
+      };
+      const json=JSON.stringify(data,null,2);
+      const blob=new Blob([json],{type:'application/json'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      const nom=(c&&c.v&&c.v.nom?c.v.nom.trim().replace(/[^a-zA-Z0-9à-úÀ-Ú_-]+/g,'_'):'assemblee');
+      const d=new Date().toISOString().slice(0,10);
+      a.href=url;
+      a.download=`sauvegarde_${nom}_${d}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showMsg('Sauvegarde complète exportée et téléchargée avec succès !','ok');
+    }catch(e){
+      console.error(e);
+      showMsg('Erreur lors de l’export : '+e.message,'err');
+    }
+  };
+
+  const parseJsonFile=(file)=>{
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      try{
+        const parsed=JSON.parse(e.target.result);
+        if(!parsed||typeof parsed!=='object'){
+          throw new Error('Le fichier n’est pas un objet JSON valide.');
+        }
+        if(!parsed.cfg&&!parsed.lieux&&!parsed.presidents&&!parsed.matieres&&!parsed.progs){
+          throw new Error('Ce fichier ne contient pas les données attendues du Programme de prédication.');
+        }
+        setFileData(parsed);
+        setFileName(file.name);
+        showMsg('Fichier de sauvegarde chargé. Vérifiez l’aperçu ci-dessous avant d’appliquer.','ok');
+      }catch(err){
+        showMsg('Erreur lors de la lecture : '+err.message,'err');
+      }
+    };
+    reader.onerror=()=>showMsg('Impossible de lire le fichier sélectionné.','err');
+    reader.readAsText(file);
+  };
+
+  const handleDrop=(e)=>{
+    e.preventDefault();
+    setDragActive(false);
+    if(e.dataTransfer.files&&e.dataTransfer.files[0]){
+      parseJsonFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleRestore=async(mode='replace')=>{
+    if(!fileData)return;
+    if(mode==='replace'){
+      const conf=confirm('ATTENTION : Vous êtes sur le point d’écraser TOUTES vos données actuelles (configuration, listes et plannings) pour les remplacer par cette sauvegarde. Confirmez-vous ?');
+      if(!conf)return;
+    }
+    try{
+      if(mode==='replace'){
+        await db.transaction('rw',db.kv,db.lieux,db.presidents,db.matieres,db.progs,async()=>{
+          await db.kv.clear();
+          await db.lieux.clear();
+          await db.presidents.clear();
+          await db.matieres.clear();
+          await db.progs.clear();
+
+          if(fileData.cfg) await db.kv.put({k:'cfg',v:fileData.cfg});
+          if(Array.isArray(fileData.lieux)){
+            for(const item of fileData.lieux){
+              const {id,...rest}=item;
+              await db.lieux.add(rest);
+            }
+          }
+          if(Array.isArray(fileData.presidents)){
+            for(const item of fileData.presidents){
+              const {id,...rest}=item;
+              await db.presidents.add(rest);
+            }
+          }
+          if(Array.isArray(fileData.matieres)){
+            for(const item of fileData.matieres){
+              const {id,...rest}=item;
+              await db.matieres.add(rest);
+            }
+          }
+          if(Array.isArray(fileData.progs)){
+            for(const item of fileData.progs){
+              await db.progs.put(item);
+            }
+          }
+        });
+      }else{
+        await db.transaction('rw',db.kv,db.lieux,db.presidents,db.matieres,db.progs,async()=>{
+          if(fileData.cfg){
+            const cur=await db.kv.get('cfg');
+            if(!cur) await db.kv.put({k:'cfg',v:fileData.cfg});
+          }
+          if(Array.isArray(fileData.lieux)){
+            const curLieux=await db.lieux.toArray();
+            const setNames=new Set(curLieux.map(x=>(x.nom||'').trim().toLowerCase()));
+            for(const item of fileData.lieux){
+              if(item.nom&&!setNames.has(item.nom.trim().toLowerCase())){
+                const {id,...rest}=item;
+                await db.lieux.add(rest);
+                setNames.add(item.nom.trim().toLowerCase());
+              }
+            }
+          }
+          if(Array.isArray(fileData.presidents)){
+            const curPres=await db.presidents.toArray();
+            const setNames=new Set(curPres.map(x=>(x.nom||'').trim().toLowerCase()));
+            for(const item of fileData.presidents){
+              if(item.nom&&!setNames.has(item.nom.trim().toLowerCase())){
+                const {id,...rest}=item;
+                await db.presidents.add(rest);
+                setNames.add(item.nom.trim().toLowerCase());
+              }
+            }
+          }
+          if(Array.isArray(fileData.matieres)){
+            const curMat=await db.matieres.toArray();
+            const setTitles=new Set(curMat.map(x=>(x.titre||'').trim().toLowerCase()));
+            for(const item of fileData.matieres){
+              if(item.titre&&!setTitles.has(item.titre.trim().toLowerCase())){
+                const {id,...rest}=item;
+                await db.matieres.add(rest);
+                setTitles.add(item.titre.trim().toLowerCase());
+              }
+            }
+          }
+          if(Array.isArray(fileData.progs)){
+            for(const item of fileData.progs){
+              if(item.mois){
+                const cur=await db.progs.get(item.mois);
+                if(!cur){
+                  await db.progs.put(item);
+                }else{
+                  await db.progs.put({
+                    mois:item.mois,
+                    data:{...(cur.data||{}),...(item.data||{})}
+                  });
+                }
+              }
+            }
+          }
+        });
+      }
+      setFileData(null);
+      setFileName('');
+      await reload();
+      await refreshStats();
+      showMsg(mode==='replace'?'Restauration complète effectuée avec succès !':'Fusion des données effectuée avec succès !','ok');
+      if(onSuccess)setTimeout(onSuccess,1200);
+    }catch(err){
+      console.error(err);
+      showMsg('Erreur lors de la restauration : '+err.message,'err');
+    }
+  };
+
+  const createSnapshot=async()=>{
+    try{
+      const [c,lieux,presidents,matieres,progs]=await Promise.all([
+        db.kv.get('cfg'),
+        db.lieux.toArray(),
+        db.presidents.toArray(),
+        db.matieres.toArray(),
+        db.progs.toArray()
+      ]);
+      const now=new Date();
+      const snap={
+        id:'snap_'+Date.now(),
+        date:now.toLocaleDateString('fr-FR')+' à '+now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
+        label:snapLabel.trim()||('Instantané du '+now.toLocaleDateString('fr-FR')+' '+now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})),
+        assemblee:c&&c.v&&c.v.nom?c.v.nom:'Non configurée',
+        counts:{lieux:lieux.length,presidents:presidents.length,matieres:matieres.length,progs:progs.length},
+        data:{app:'programme_predication',version:1,exportedAt:now.toISOString(),cfg:c?c.v:null,lieux,presidents,matieres,progs}
+      };
+      const updated=[snap,...snapshots].slice(0,10);
+      localStorage.setItem('predic_snapshots',JSON.stringify(updated));
+      setSnapshots(updated);
+      setSnapLabel('');
+      showMsg('Instantané local créé avec succès !','ok');
+    }catch(e){
+      console.error(e);
+      showMsg('Erreur : '+e.message,'err');
+    }
+  };
+
+  const restoreSnapshot=async(snap)=>{
+    if(!confirm('Restaurer l’instantané « '+snap.label+' » ? Cela remplacera les données actuelles.'))return;
+    try{
+      await db.transaction('rw',db.kv,db.lieux,db.presidents,db.matieres,db.progs,async()=>{
+        await db.kv.clear();
+        await db.lieux.clear();
+        await db.presidents.clear();
+        await db.matieres.clear();
+        await db.progs.clear();
+        const d=snap.data;
+        if(d.cfg) await db.kv.put({k:'cfg',v:d.cfg});
+        if(Array.isArray(d.lieux)) for(const item of d.lieux){const {id,...rest}=item;await db.lieux.add(rest);}
+        if(Array.isArray(d.presidents)) for(const item of d.presidents){const {id,...rest}=item;await db.presidents.add(rest);}
+        if(Array.isArray(d.matieres)) for(const item of d.matieres){const {id,...rest}=item;await db.matieres.add(rest);}
+        if(Array.isArray(d.progs)) for(const item of d.progs) await db.progs.put(item);
+      });
+      await reload();
+      await refreshStats();
+      showMsg('Instantané « '+snap.label+' » restauré !','ok');
+      if(onSuccess)setTimeout(onSuccess,1200);
+    }catch(e){
+      console.error(e);
+      showMsg('Erreur : '+e.message,'err');
+    }
+  };
+
+  const deleteSnapshot=(id)=>{
+    const updated=snapshots.filter(s=>s.id!==id);
+    localStorage.setItem('predic_snapshots',JSON.stringify(updated));
+    setSnapshots(updated);
+  };
+
+  const handleReset=async()=>{
+    const conf=prompt('ATTENTION : Cette action supprimera TOUTES vos données enregistrées.\nPour confirmer, tapez "EFFACER" en majuscules :');
+    if(conf!=='EFFACER'){
+      if(conf!==null) alert('Action annulée : mot de confirmation incorrect.');
+      return;
+    }
+    try{
+      await db.transaction('rw',db.kv,db.lieux,db.presidents,db.matieres,db.progs,async()=>{
+        await db.kv.clear();
+        await db.lieux.clear();
+        await db.presidents.clear();
+        await db.matieres.clear();
+        await db.progs.clear();
+      });
+      await reload();
+      await refreshStats();
+      showMsg('Toutes les données ont été réinitialisées.','warn');
+    }catch(e){
+      console.error(e);
+      showMsg('Erreur lors de la réinitialisation : '+e.message,'err');
+    }
+  };
+
+  return h('div',{className:'no-print'},
+    msg&&h('div',{className:`alert alert-${msg.type}`},
+      h('span',null,msg.text),
+      h('button',{className:'x',onClick:()=>setMsg(null)},'×')),
+
+    h('section',{className:'card'},
+      h('h3',null,'Sauvegarde complète (Exporter)'),
+      h('p',{className:'mut'},'Téléchargez un fichier .json sécurisé contenant l’ensemble de vos réglages, listes et plannings mensuels pour les conserver ou les transférer vers un autre appareil.'),
+      h('div',{className:'stat-grid'},
+        h('div',{className:'stat-card'},h('div',{className:'val'},cfg?.nom||'—'),h('div',{className:'lbl'},'Assemblée')),
+        h('div',{className:'stat-card'},h('div',{className:'val'},stats.progs),h('div',{className:'lbl'},'Mois planifiés')),
+        h('div',{className:'stat-card'},h('div',{className:'val'},stats.presidents),h('div',{className:'lbl'},'Présidents')),
+        h('div',{className:'stat-card'},h('div',{className:'val'},stats.lieux),h('div',{className:'lbl'},'Lieux')),
+        h('div',{className:'stat-card'},h('div',{className:'val'},stats.matieres),h('div',{className:'lbl'},'Matières'))),
+      h('div',{className:'row',style:{marginTop:14}},
+        h('button',{className:'pri',onClick:handleExport},'💾 Télécharger le fichier de sauvegarde (.json)'))),
+
+    h('section',{className:'card'},
+      h('h3',null,'Restauration (Importer un fichier)'),
+      h('p',{className:'mut'},'Sélectionnez ou glissez-déposez un fichier de sauvegarde .json pour restaurer vos données.'),
+      h('div',{
+        className:`drop-zone ${dragActive?'active':''}`,
+        onDragOver:e=>{e.preventDefault();setDragActive(true)},
+        onDragLeave:()=>setDragActive(false),
+        onDrop:handleDrop,
+        onClick:()=>document.getElementById('backup-file-input').click()
+      },
+        h('input',{
+          id:'backup-file-input',
+          type:'file',
+          accept:'.json,application/json',
+          style:{display:'none'},
+          onChange:e=>e.target.files&&e.target.files[0]&&parseJsonFile(e.target.files[0])
+        }),
+        h('div',{style:{fontSize:32,marginBottom:6}},'📁'),
+        h('b',null,fileName?('Fichier sélectionné : '+fileName):'Cliquez pour choisir un fichier ou glissez-le ici'),
+        h('p',{className:'mut',style:{margin:'4px 0 0'}},'Fichier .json créé par l’application')),
+
+      fileData&&h('div',{style:{marginTop:14,border:'1px solid var(--bd)',borderRadius:8,padding:14,background:'var(--bg)'}},
+        h('h4',{style:{margin:'0 0 10px',fontSize:15}},'Aperçu du contenu du fichier sélectionné :'),
+        h('ul',{style:{marginBottom:14}},
+          h('li',null,h('span',null,'Assemblée :'),h('b',null,fileData.cfg?.nom||'Non configurée')),
+          h('li',null,h('span',null,'Date de l’export :'),h('b',null,fileData.exportedAt?new Date(fileData.exportedAt).toLocaleString('fr-FR'):'Non spécifiée')),
+          h('li',null,h('span',null,'Mois de programme(s) :'),h('b',null,(fileData.progs||[]).length+((fileData.progs||[]).length?' ('+(fileData.progs||[]).map(p=>p.mois).join(', ')+')':''))),
+          h('li',null,h('span',null,'Présidents / conducteurs :'),h('b',null,(fileData.presidents||[]).length)),
+          h('li',null,h('span',null,'Lieux de rendez-vous :'),h('b',null,(fileData.lieux||[]).length)),
+          h('li',null,h('span',null,'Matières enregistrées :'),h('b',null,(fileData.matieres||[]).length))),
+        h('div',{className:'row'},
+          h('button',{className:'pri',onClick:()=>handleRestore('replace')},'⚠️ Remplacer tout (Restauration complète)'),
+          h('button',{onClick:()=>handleRestore('merge')},'🔀 Fusionner avec mes données actuelles'),
+          h('button',{className:'sec',onClick:()=>{setFileData(null);setFileName('')}},'Annuler la sélection')))),
+
+    h('section',{className:'card'},
+      h('h3',null,'Instantanés rapides (Historique local dans ce navigateur)'),
+      h('p',{className:'mut'},'Créez un point de sauvegarde immédiat avant d’apporter des modifications importantes pour pouvoir revenir en arrière en 1 clic.'),
+      h('div',{className:'row'},
+        h('input',{
+          placeholder:'Note pour cet instantané (ex: Avant saisie de novembre)',
+          value:snapLabel,
+          onChange:e=>setSnapLabel(e.target.value),
+          style:{flex:1,minWidth:220}
+        }),
+        h('button',{className:'pri',onClick:createSnapshot},'+ Créer un instantané')),
+      snapshots.length===0
+        ? h('p',{className:'mut',style:{fontStyle:'italic',marginTop:8}},'Aucun instantané local enregistré pour le moment.')
+        : h('ul',{style:{marginTop:12}},
+            ...snapshots.map(s=>h('li',{key:s.id,style:{alignItems:'center',gap:8}},
+              h('div',{style:{flex:1}},
+                h('b',null,s.label),
+                h('div',{className:'mut',style:{fontSize:12}},s.date+' • '+s.assemblee+' • '+(s.counts?s.counts.progs+' mois, '+s.counts.presidents+' présidents':''))),
+              h('div',{style:{display:'flex',gap:6}},
+                h('button',{onClick:()=>restoreSnapshot(s),title:'Restaurer cet instantané'},'Restaurer'),
+                h('button',{className:'x',onClick:()=>deleteSnapshot(s.id),title:'Supprimer cet instantané'},'×')))))),
+
+    h('section',{className:'card'},
+      h('h3',{style:{color:'#c62828'}},'Zone de danger'),
+      h('p',{className:'mut'},'Effacer complètement toutes les données enregistrées dans ce navigateur (configuration, listes et plannings).'),
+      h('button',{className:'danger',onClick:handleReset},'🗑️ Réinitialiser toutes les données'))
+  );
+}
+
 function App(){
   const [ready,setReady]=useState(false);
   const [cfg,setCfg]=useState(null);
@@ -234,22 +634,27 @@ function App(){
       const c=await db.kv.get('cfg');
       setCfg(c?c.v:null);
       setL({lieux:await db.lieux.toArray(),presidents:await db.presidents.toArray(),matieres:await db.matieres.toArray()});
-      if(!c)setTab('cfg');
+      if(!c)setTab(t=>t==='backup'?'backup':'cfg');
     }catch(e){console.error(e)}
     setReady(true);
   },[]);
   useEffect(()=>{load()},[load]);
   if(!ready)return h('div',{className:'wrap'},'Chargement…');
-  const T=(id,l)=>h('button',{className:tab===id?'on':'',onClick:()=>setTab(id),disabled:!cfg&&id!=='cfg'},l);
+  const T=(id,l)=>h('button',{className:tab===id?'on':'',onClick:()=>setTab(id),disabled:!cfg&&id!=='cfg'&&id!=='backup'},l);
   return h('div',{className:'wrap'},
     h('header',{className:'no-print'},h('h1',null,'Programme des réunions pour la prédication'),
-      h('nav',null,T('prog','Programme du mois'),T('data','Lieux, présidents, matières'),T('cfg','Configuration'))),
+      h('nav',null,
+        T('prog','Programme du mois'),
+        T('data','Lieux, présidents, matières'),
+        T('cfg','Configuration'),
+        T('backup','Sauvegarde & Restauration'))),
     tab==='cfg'&&h(Config,{cfg,done:async()=>{await load();setTab('prog')}}),
     tab==='data'&&h('div',null,
       h(ListEd,{t:'lieux',title:'Lieux de rendez-vous',fields:[['nom','Ex. Famille Djoutchouang']],items:L.lieux,reload:load}),
       h(ListEd,{t:'presidents',title:'Présidents / conducteurs',fields:[['nom','Nom']],items:L.presidents,reload:load}),
       h(ListEd,{t:'matieres',title:'Matières enregistrées',fields:[['titre','Titre de la matière'],['ref','Référence (ex. w61 15/2 p. 63)']],items:L.matieres,reload:load})),
-    tab==='prog'&&cfg&&h(Prog,{cfg,L}));
+    tab==='prog'&&cfg&&h(Prog,{cfg,L}),
+    tab==='backup'&&h(BackupView,{cfg,reload:load,onSuccess:()=>setTab('prog')}));
 }
 ReactDOM.createRoot(document.getElementById('root')).render(h(App));
 </script></body></html>
