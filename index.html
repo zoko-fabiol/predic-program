@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Programme de prédication</title>
+<style>
+:root{--bg:#f6f5f1;--fg:#1d1d1b;--card:#fff;--mut:#6b6b66;--ac:#2f5d8a;--bd:#d9d7cf;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1a18;--fg:#eceae3;--card:#262623;--mut:#a3a199;--ac:#7fb0e0;--bd:#3d3c37}}
+:root[data-theme="dark"]{--bg:#1a1a18;--fg:#eceae3;--card:#262623;--mut:#a3a199;--ac:#7fb0e0;--bd:#3d3c37}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0}h3{margin:0 0 10px;font-size:16px}
+nav{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
+button,select,input{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;max-width:100%}
+button{cursor:pointer}button.on,button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.lab{display:block;color:var(--mut);font-size:13px;margin:10px 0 4px}
+.mut{color:var(--mut);font-size:13px}
+ul{list-style:none;margin:0;padding:0}li{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--bd)}
+.x{padding:0 8px;border:0;background:none;color:var(--mut)}
+.wk{overflow-x:auto;margin-bottom:12px}
+.ed{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.ed>div{border:1px solid var(--bd);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.ed b{font-size:13px}
+.sheets{overflow-x:auto}
+.page{width:297mm;min-height:210mm;margin:0 auto 14px;padding:20pt 12.6pt;background:#fff;color:#192647;font-family:Helvetica,Arial,sans-serif;box-shadow:0 1px 6px rgba(0,0,0,.25)}
+.page h1{margin:0;text-align:center;font-size:20pt;line-height:1.2;color:#192647}
+.page .sub{margin:5pt 0 0;text-align:center;font-size:10pt;color:#7e8598}
+.page .lnk{margin:6pt 0 0;text-align:center;font-size:9pt;font-weight:700;color:#1f388c}
+.hd{margin-bottom:12pt}
+.wl{font-weight:700;font-size:9pt;margin:0 0 4pt 4pt;color:#192647}
+.wkb{margin-bottom:22pt}
+.page table{width:100%;border-collapse:collapse;table-layout:fixed;border:1.2pt solid #99a1ad}
+.page th{padding:6pt 4pt;font-size:11pt;font-weight:700;color:#192647;border:.5pt solid #99a1ad;height:37pt;text-align:center}
+.page th span{display:block;font-size:8pt;margin-top:2pt}
+.page td{border:.5pt solid #99a1ad;text-align:center;vertical-align:middle;padding:4pt 8pt;font-size:8.5pt;color:#2f3a58}
+.page td b{display:block;font-size:8.5pt;color:#192647;margin-bottom:3pt}
+.page td span{display:block}
+.page td .b{font-weight:700;color:#192647}
+.page td small{display:block;font-size:6.5pt;font-weight:700;color:#444;margin-top:3pt}
+.mt{font-weight:700;font-size:8pt;color:#192647;line-height:1.35}
+.gr,.dash{color:#adadb8!important}
+.rL td,.rP td{height:41pt}.rM td{height:62pt}.rT td{height:40pt}
+@media print{
+ @page{size:A4 landscape;margin:0}
+ *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ body{background:#fff}.no-print{display:none!important}
+ .wrap{padding:0;max-width:none}.sheets{overflow:visible}
+ .page{width:297mm;height:209mm;min-height:0;margin:0;box-shadow:none;overflow:hidden;page-break-after:always}
+ .page:last-child{page-break-after:auto}
+}
+</style></head>
+<body><div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dexie/3.2.7/dexie.min.js"></script>
+<script>
+const h=React.createElement,{useState,useEffect,useCallback}=React;
+const db=new Dexie('programme_predication');
+db.version(1).stores({kv:'k',lieux:'++id,nom',presidents:'++id,nom',matieres:'++id,titre',progs:'mois'});
+const MOIS='janvier février mars avril mai juin juillet août septembre octobre novembre décembre'.split(' ');
+const JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+const pad=n=>String(n).padStart(2,'0');
+const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const DEF={nom:'',mode:'alpha',ranges:[{p:'A',from:1,to:12},{p:'B',from:1,to:12}],groupes:[{nom:'Groupe A',lieu:''}],jours:[3,5,6,0],salle:'Salle du Royaume'};
+
+function cards(c){
+  if(!c||!c.ranges)return [];
+  return c.ranges.flatMap(r=>{
+    const a=Math.floor(+r.from),b=Math.floor(+r.to);
+    if(!(a>=1)||!(b>=a)||b-a>999)return [];
+    const p=c.mode==='num'?'':(r.p||'').trim();
+    return Array.from({length:b-a+1},(_,i)=>p+(a+i));
+  });
+}
+// Une semaine = les jours de réunion qui précèdent un dimanche situé dans le mois choisi
+function semaines(y,m,jours){
+  const out=[],n=new Date(y,m+1,0).getDate();
+  for(let d=1;d<=n;d++){
+    if(new Date(y,m,d).getDay()!==0)continue;
+    const ds=jours.map(j=>new Date(y,m,d-((7-j)%7))).sort((a,b)=>a-b);
+    if(ds.length)out.push(ds);
+  }
+  return out;
+}
+const wlab=ds=>{const a=ds[0],b=ds[ds.length-1];return 'Semaine du '+a.getDate()+' au '+b.getDate()+' '+MOIS[b.getMonth()]+' '+b.getFullYear()};
+
+function Sel({v,on,opts,ph}){
+  return h('select',{value:v||'',onChange:e=>on(e.target.value)},
+    h('option',{value:''},ph||'—'),...opts.map(o=>h('option',{key:o,value:o},o)));
+}
+
+function Config({cfg,done}){
+  const [f,setF]=useState({...DEF,...(cfg||{})});
+  const set=p=>setF({...f,...p});
+  const setR=(i,p)=>set({ranges:f.ranges.map((r,j)=>j===i?{...r,...p}:r)});
+  const setG=(i,p)=>set({groupes:f.groupes.map((g,j)=>j===i?{...g,...p}:g)});
+  const tog=j=>set({jours:f.jours.includes(j)?f.jours.filter(x=>x!==j):[...f.jours,j]});
+  const nb=cards(f).length;
+  const save=async()=>{
+    if(!f.nom.trim())return alert('Indiquez le nom de l’assemblée.');
+    try{await db.kv.put({k:'cfg',v:{...f,groupes:f.groupes.filter(g=>g.nom.trim())}});}catch(e){console.error(e)}
+    done();
+  };
+  return h('section',{className:'card no-print'},
+    h('h3',null,'Configuration de l’assemblée'),
+    h('label',{className:'lab'},'Nom de l’assemblée'),
+    h('input',{value:f.nom,onChange:e=>set({nom:e.target.value}),placeholder:'Ex. Ndogbong Fin-Goudron',style:{width:'100%'}}),
+    h('label',{className:'lab'},'Numérotation des cartes de territoire'),
+    h('div',{className:'row'},
+      h('select',{value:f.mode,onChange:e=>set({mode:e.target.value})},
+        h('option',{value:'alpha'},'Lettres + chiffres (A1, A2, B1…)'),
+        h('option',{value:'num'},'Chiffres seulement (1, 2, 3…)'))),
+    ...f.ranges.map((r,i)=>h('div',{className:'row',key:i},
+      f.mode==='num'?null:h('input',{value:r.p,placeholder:'Lettre',maxLength:3,onChange:e=>setR(i,{p:e.target.value.toUpperCase()}),style:{width:80}}),
+      h('span',{className:'mut'},'de'),
+      h('input',{type:'number',min:1,value:r.from,onChange:e=>setR(i,{from:e.target.value}),style:{width:90}}),
+      h('span',{className:'mut'},'à'),
+      h('input',{type:'number',min:1,value:r.to,onChange:e=>setR(i,{to:e.target.value}),style:{width:90}}),
+      h('button',{className:'x',title:'Supprimer la rangée',onClick:()=>set({ranges:f.ranges.filter((_,j)=>j!==i)})},'×'))),
+    h('div',{className:'row'},h('button',{onClick:()=>set({ranges:[...f.ranges,{p:'',from:1,to:10}]})},'+ Ajouter une rangée')),
+    h('p',{className:'mut'},'Chaque rangée a un début et une fin : A de 1 à 40 donne A1…A40, et en chiffres seulement de 40 à 80 donne 40…80. Le début peut être n’importe quel nombre à partir de 1. → ',nb,' carte(s) au total.'),
+    h('label',{className:'lab'},'Groupes de prédication et lieux de rendez-vous'),
+    h('div',{className:'row'},
+      h('span',{className:'mut'},'Nombre de groupes'),
+      h('input',{key:'n'+f.groupes.length,type:'number',min:0,max:60,defaultValue:f.groupes.length,style:{width:90},
+        onBlur:e=>{const n=Math.max(0,Math.min(60,+e.target.value||0));set({groupes:Array.from({length:n},(_,i)=>f.groupes[i]||{nom:'',lieu:''})})}}),
+      h('button',{onClick:()=>set({groupes:[...f.groupes,{nom:'',lieu:''}]})},'+ Ajouter un groupe')),
+    ...f.groupes.map((g,i)=>h('div',{className:'row',key:'g'+i},
+      h('input',{value:g.nom,placeholder:'Nom du groupe (ex. Groupe A)',onChange:e=>setG(i,{nom:e.target.value}),style:{flex:1,minWidth:140}}),
+      h('input',{value:g.lieu,placeholder:'Lieu de rendez-vous',onChange:e=>setG(i,{lieu:e.target.value}),style:{flex:1,minWidth:140}}),
+      h('button',{className:'x',title:'Supprimer le groupe',onClick:()=>set({groupes:f.groupes.filter((_,j)=>j!==i)})},'×'))),
+    h('p',{className:'mut'},'Les noms sont libres (Groupe A, Groupe 1, Groupe 5…). Les cartes de territoire sont indépendantes des groupes.'),
+    h('label',{className:'lab'},'Jours de réunion pour la prédication'),
+    h('div',{className:'row'},...[1,2,3,4,5,6,0].map(j=>
+      h('label',{key:j,style:{display:'flex',gap:4,alignItems:'center'}},
+        h('input',{type:'checkbox',checked:f.jours.includes(j),onChange:()=>tog(j)}),JOURS[j]))),
+    h('label',{className:'lab'},'Lieu par défaut le dimanche'),
+    h('input',{value:f.salle,onChange:e=>set({salle:e.target.value}),style:{width:'100%'}}),
+    h('div',{className:'row',style:{marginTop:14}},h('button',{className:'pri',onClick:save},'Enregistrer')));
+}
+
+function ListEd({t,fields,items,reload,title}){
+  const [f,setF]=useState({});
+  const add=async()=>{
+    if(!(f[fields[0][0]]||'').trim())return;
+    try{await db[t].add(f);}catch(e){console.error(e)}
+    setF({});reload();
+  };
+  return h('section',{className:'card no-print'},h('h3',null,title),
+    h('div',{className:'row'},
+      ...fields.map(([k,ph])=>h('input',{key:k,placeholder:ph,value:f[k]||'',onChange:e=>setF({...f,[k]:e.target.value}),style:{flex:1,minWidth:140}})),
+      h('button',{onClick:add},'Ajouter')),
+    h('ul',null,...items.map(i=>h('li',{key:i.id},
+      h('span',null,fields.map(([k])=>i[k]).filter(Boolean).join(' — ')),
+      h('button',{className:'x',title:'Supprimer',onClick:async()=>{await db[t].delete(i.id);reload()}},'×')))));
+}
+
+function Prog({cfg,L}){
+  const now=new Date();
+  const [mois,setMois]=useState(now.getFullYear()+'-'+pad(now.getMonth()+1));
+  const [data,setData]=useState({});
+  useEffect(()=>{
+    let ok=true;
+    db.progs.get(mois).then(r=>ok&&setData(r?r.data:{})).catch(console.error);
+    return()=>{ok=false};
+  },[mois]);
+  const upd=(k,p)=>{
+    const n={...data,[k]:{...data[k],...p}};
+    setData(n);
+    db.progs.put({mois,data:n}).catch(console.error);
+  };
+  const [y,m]=mois.split('-').map(Number);
+  const weeks=semaines(y,m-1,cfg.jours);
+  const cs=cards(cfg);
+  const lieux=[...new Set([cfg.salle,...(cfg.groupes||[]).map(x=>x.lieu),...L.lieux.map(x=>x.nom)].filter(Boolean))];
+  const get=d=>{const r=data[iso(d)]||{};return {loc:r.loc!==undefined?r.loc:(d.getDay()===0?cfg.salle:''),pres:r.pres||'',topic:r.topic||'',ref:r.ref||'',terr:r.terr||'',grp:r.grp||''}};
+  const first=weeks[0]&&weeks[0][0];
+  const [note,setNote]=useState(false);
+  const pages=[];for(let i=0;i<weeks.length;i+=2)pages.push(weeks.slice(i,i+2));
+  const PAL={3:['#80bfb8','#e5f5f2'],5:['#99a3db','#ebedfa'],6:['#a6cc85','#edf5e0'],0:['#bdadd6','#f2edf7'],1:['#e0b48a','#f8efe6'],2:['#e6a8b8','#faeef1'],4:['#8fc7e0','#e8f4fa']};
+  const cell=(d,t)=>{
+    const g=get(d),k=iso(d),bg={background:PAL[d.getDay()][1]};
+    if(t==='Lieu')return h('td',{key:k,style:bg},h('b',null,'Lieu'),h('span',{className:g.loc&&g.loc===cfg.salle?'b':''},g.loc||'—'));
+    if(t==='Président')return h('td',{key:k,style:bg},h('b',null,'Président'),h('span',{className:'b'},g.pres||'—'));
+    if(t==='Matière')return h('td',{key:k,style:bg},g.topic||g.ref?h('div',{className:'mt'},g.topic,g.ref?h('small',null,g.ref):null):h('span',{className:'dash'},'—'));
+    const v=d.getDay()===0?'':g.terr;
+    return h('td',{key:k,style:bg},h('b',{className:v?'':'gr'},'Territoire'),h('span',{className:v?'b':'gr'},v||'—'));
+  };
+
+  return h('div',null,
+    h('div',{className:'row no-print'},
+      h('input',{type:'month',value:mois,onChange:e=>e.target.value&&setMois(e.target.value)}),
+      h('button',{className:'pri',onClick:()=>window.print()},'Imprimer / Enregistrer en PDF'),
+      h('label',{style:{display:'flex',gap:4,alignItems:'center'}},h('input',{type:'checkbox',checked:note,onChange:e=>setNote(e.target.checked)}),'Afficher la ligne « Cliquez directement… »'),
+      h('span',{className:'mut'},weeks.length+' semaine(s)')),
+    h('datalist',{id:'mat'},...L.matieres.map(x=>h('option',{key:x.id,value:x.titre}))),
+    ...weeks.map((ds,wi)=>h('section',{key:wi,className:'card no-print'},
+      h('h3',null,wlab(ds)),
+      h('div',{className:'ed'},...ds.map(d=>{
+        const k=iso(d),g=get(d),dim=d.getDay()===0;
+        return h('div',{key:k},
+          h('b',null,JOURS[d.getDay()]+' '+d.getDate()+' '+MOIS[d.getMonth()]),
+          (cfg.groupes||[]).length?h(Sel,{v:g.grp,on:v=>{const gr=cfg.groupes.find(x=>x.nom===v);upd(k,gr&&gr.lieu?{grp:v,loc:gr.lieu}:{grp:v});},opts:cfg.groupes.map(x=>x.nom),ph:'Groupe…'}):null,
+          h(Sel,{v:g.loc,on:v=>upd(k,{loc:v}),opts:lieux,ph:'Lieu…'}),
+          h(Sel,{v:g.pres,on:v=>upd(k,{pres:v}),opts:L.presidents.map(x=>x.nom),ph:'Président…'}),
+          h('input',{list:'mat',placeholder:'Matière',value:g.topic,onChange:e=>{
+            const v=e.target.value,s=L.matieres.find(x=>x.titre===v);
+            upd(k,s?{topic:v,ref:s.ref||''}:{topic:v});}}),
+          h('input',{placeholder:'Publication / référence',value:g.ref,onChange:e=>upd(k,{ref:e.target.value})}),
+          dim?null:h(Sel,{v:g.terr,on:v=>upd(k,{terr:v}),opts:cs,ph:'Territoire…'}));
+      })))),
+    first&&h('div',{className:'sheets'},...pages.map((pw,pi)=>h('div',{className:'page',key:pi},
+      pi===0&&h('div',{className:'hd'},
+        h('h1',null,'Programme des Réunions pour la Prédication'),
+        h('p',{className:'sub'},'Assemblée de '+cfg.nom+' — À partir du '+first.getDate()+' '+MOIS[first.getMonth()]+' '+first.getFullYear()),
+        note&&h('p',{className:'lnk'},'■ Cliquez directement sur les matières à examiner pour être redirigé vers la publication correspondante')),
+      ...pw.map((ds,wi)=>h('div',{key:wi,className:'wkb'},
+        h('div',{className:'wl'},wlab(ds)),
+        h('table',null,
+          h('thead',null,h('tr',null,...ds.map(d=>h('th',{key:iso(d),style:{background:PAL[d.getDay()][0]}},JOURS[d.getDay()].toUpperCase(),h('span',null,d.getDate()+' '+MOIS[d.getMonth()]))))),
+          h('tbody',null,...['Lieu','Président','Matière','Territoire'].map(t=>h('tr',{key:t,className:'r'+t[0]},...ds.map(d=>cell(d,t)))))))))))
+  );
+}
+
+function App(){
+  const [ready,setReady]=useState(false);
+  const [cfg,setCfg]=useState(null);
+  const [L,setL]=useState({lieux:[],presidents:[],matieres:[]});
+  const [tab,setTab]=useState('prog');
+  const load=useCallback(async()=>{
+    try{
+      const c=await db.kv.get('cfg');
+      setCfg(c?c.v:null);
+      setL({lieux:await db.lieux.toArray(),presidents:await db.presidents.toArray(),matieres:await db.matieres.toArray()});
+      if(!c)setTab('cfg');
+    }catch(e){console.error(e)}
+    setReady(true);
+  },[]);
+  useEffect(()=>{load()},[load]);
+  if(!ready)return h('div',{className:'wrap'},'Chargement…');
+  const T=(id,l)=>h('button',{className:tab===id?'on':'',onClick:()=>setTab(id),disabled:!cfg&&id!=='cfg'},l);
+  return h('div',{className:'wrap'},
+    h('header',{className:'no-print'},h('h1',null,'Programme des réunions pour la prédication'),
+      h('nav',null,T('prog','Programme du mois'),T('data','Lieux, présidents, matières'),T('cfg','Configuration'))),
+    tab==='cfg'&&h(Config,{cfg,done:async()=>{await load();setTab('prog')}}),
+    tab==='data'&&h('div',null,
+      h(ListEd,{t:'lieux',title:'Lieux de rendez-vous',fields:[['nom','Ex. Famille Djoutchouang']],items:L.lieux,reload:load}),
+      h(ListEd,{t:'presidents',title:'Présidents / conducteurs',fields:[['nom','Nom']],items:L.presidents,reload:load}),
+      h(ListEd,{t:'matieres',title:'Matières enregistrées',fields:[['titre','Titre de la matière'],['ref','Référence (ex. w61 15/2 p. 63)']],items:L.matieres,reload:load})),
+    tab==='prog'&&cfg&&h(Prog,{cfg,L}));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script></body></html>
